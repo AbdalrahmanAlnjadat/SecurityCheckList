@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Security Checklist</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0f; }
+    ::-webkit-scrollbar { width: 6px; } 
+    ::-webkit-scrollbar-track { background: #111; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    .item-row:hover { background: rgba(255,255,255,0.04) !important; }
+    .cat-header:hover { background: rgba(255,255,255,0.06) !important; }
+    .copy-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+    .filter-btn { transition: all 0.15s; }
+    .filter-btn:hover { opacity: 0.8; }
+    @keyframes slideIn { from { opacity:0; transform: translateY(-8px); } to { opacity:1; transform: translateY(0); } }
+    .items-list { animation: slideIn 0.18s ease; }
+    .progress-bar-inner { transition: width 0.4s cubic-bezier(.4,0,.2,1); }
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@700;800&display=swap');
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState } = React;
+
+    const categories = [
+      {
+        id: "injection", label: "Injection Attacks", icon: "💉", color: "#ff4444",
+        items: [
+          { id: "sql1", text: "All user inputs are parameterized / use prepared statements — never string-concatenated into SQL queries" },
+          { id: "sql2", text: "ORM usage reviewed — raw query escapes are validated and no .raw() calls use untrusted input" },
+          { id: "sql3", text: "Stored procedures do not concatenate user input internally" },
+          { id: "sql4", text: "Error messages do not expose database type, table names, column names, or query structure" },
+          { id: "nosql1", text: "NoSQL queries sanitize operators — no $where, $regex, or operator injection possible" },
+          { id: "ldap1", text: "LDAP queries escape special characters if LDAP is used" },
+          { id: "cmd1", text: "No shell commands constructed from user input — exec/spawn/system calls use fixed commands only" },
+          { id: "xpath1", text: "XPath queries use parameterized expressions, not string concatenation" },
+          { id: "template1", text: "Server-side template engines do not render user-controlled strings (SSTI)" },
+        ],
+      },
+      {
+        id: "xss", label: "Cross-Site Scripting (XSS)", icon: "🕷️", color: "#ff8800",
+        items: [
+          { id: "xss1", text: "All user-supplied data is HTML-escaped before being rendered in the browser" },
+          { id: "xss2", text: "No use of innerHTML, document.write, or eval() with user-controlled data" },
+          { id: "xss3", text: "React/Vue/Angular — dangerouslySetInnerHTML and v-html only used with sanitized content" },
+          { id: "xss4", text: "Content-Security-Policy (CSP) header is set — no unsafe-inline or unsafe-eval in script-src" },
+          { id: "xss5", text: "X-XSS-Protection header set to 1; mode=block (legacy browsers)" },
+          { id: "xss6", text: "URL parameters reflected on page are sanitized before output" },
+          { id: "xss7", text: "Rich-text / WYSIWYG editors use a strict allowlist sanitizer (e.g., DOMPurify)" },
+          { id: "xss8", text: "JSON responses served with Content-Type: application/json, not text/html" },
+          { id: "xss9", text: "SVG and HTML file uploads are blocked or served from an isolated origin" },
+        ],
+      },
+      {
+        id: "auth", label: "Authentication", icon: "🔐", color: "#ffcc00",
+        items: [
+          { id: "auth1", text: "Passwords hashed with bcrypt / argon2 / scrypt — never MD5, SHA1, or plain SHA256" },
+          { id: "auth2", text: "Login endpoint has rate limiting and account lockout / exponential backoff" },
+          { id: "auth3", text: "Forgot-password flow uses time-limited, single-use, cryptographically random tokens" },
+          { id: "auth4", text: "Password reset tokens are invalidated immediately after use" },
+          { id: "auth5", text: "Registration / login responses are identical for existing vs non-existing accounts (no user enumeration)" },
+          { id: "auth6", text: "Multi-factor authentication (MFA) is available or enforced for admin accounts" },
+          { id: "auth7", text: "Brute-force protection on all auth endpoints including password reset and OTP" },
+          { id: "auth8", text: "OAuth / SSO flows validate state parameter to prevent CSRF" },
+          { id: "auth9", text: "JWT tokens: algorithm verified (no 'none' allowed), expiry enforced, secret is strong" },
+          { id: "auth10", text: "Default credentials (admin/admin, test/test) do not exist anywhere in the system" },
+        ],
+      },
+      {
+        id: "sessions", label: "Sessions & Cookies", icon: "🍪", color: "#ffaa00",
+        items: [
+          { id: "sess1", text: "Session ID is regenerated on login, privilege change, and logout" },
+          { id: "sess2", text: "Old session is fully invalidated on logout — not just cleared client-side" },
+          { id: "sess3", text: "Session cookies have HttpOnly flag set — not accessible via JavaScript" },
+          { id: "sess4", text: "Session cookies have Secure flag set — only transmitted over HTTPS" },
+          { id: "sess5", text: "Session cookies use SameSite=Strict or SameSite=Lax to prevent CSRF" },
+          { id: "sess6", text: "Session timeout is enforced server-side (idle + absolute)" },
+          { id: "sess7", text: "Session IDs are long (>=128 bits), cryptographically random, not predictable" },
+          { id: "sess8", text: "Sessions are stored server-side — no sensitive data in client-side cookies" },
+          { id: "sess9", text: "Sensitive cookie values are encrypted or signed — not readable plaintext" },
+          { id: "sess10", text: "Concurrent session limits enforced for admin accounts if required" },
+        ],
+      },
+      {
+        id: "authz", label: "Authorization & Access Control", icon: "🛡️", color: "#00cc88",
+        items: [
+          { id: "authz1", text: "Every route / API endpoint checks authentication before processing" },
+          { id: "authz2", text: "Role check (admin vs user) is enforced server-side — never trusted from client input" },
+          { id: "authz3", text: "Admin-only routes return 403 for non-admin users, not just redirect" },
+          { id: "authz4", text: "IDOR: every object access verifies the requesting user owns or has permission for that resource" },
+          { id: "authz5", text: "User IDs / resource IDs in URLs/body are validated against session's user — not freely switchable" },
+          { id: "authz6", text: "Bulk/batch endpoints verify ownership for each item in the batch" },
+          { id: "authz7", text: "Admin functions (delete user, change roles, impersonate) are logged with who did what and when" },
+          { id: "authz8", text: "Privilege escalation paths reviewed — no endpoint accepts a role parameter from the user" },
+          { id: "authz9", text: "File / data exports are scoped to the authenticated user's accessible data only" },
+          { id: "authz10", text: "Unauthenticated API endpoints are the minimum necessary (principle of least privilege)" },
+        ],
+      },
+      {
+        id: "csrf", label: "CSRF", icon: "🔁", color: "#00aaff",
+        items: [
+          { id: "csrf1", text: "All state-changing requests (POST/PUT/PATCH/DELETE) require a CSRF token" },
+          { id: "csrf2", text: "CSRF token is tied to the user session and validated server-side" },
+          { id: "csrf3", text: "SameSite cookie attribute is set as a defense-in-depth layer" },
+          { id: "csrf4", text: "APIs consumed only by JS use custom request headers (e.g., X-Requested-With) as CSRF mitigation" },
+          { id: "csrf5", text: "Origin / Referer header validation in place as additional layer for sensitive actions" },
+        ],
+      },
+      {
+        id: "idor", label: "IDOR & Broken Object Level Auth", icon: "🔓", color: "#cc44ff",
+        items: [
+          { id: "idor1", text: "Sequential/predictable IDs are not directly exposed — use UUIDs or opaque tokens" },
+          { id: "idor2", text: "GET /api/users/:id — verified that a user cannot fetch another user's profile" },
+          { id: "idor3", text: "GET /api/orders/:id — verified that a user cannot fetch another user's orders" },
+          { id: "idor4", text: "PUT/DELETE /api/resource/:id — verified that only the owner or admin can modify/delete" },
+          { id: "idor5", text: "File download endpoints verify the requesting user has access to that file" },
+          { id: "idor6", text: "Admin-only data fields are stripped from responses sent to regular users" },
+          { id: "idor7", text: "Mass assignment is blocked — only allowlisted fields can be set via user input" },
+        ],
+      },
+      {
+        id: "headers", label: "HTTP Security Headers", icon: "📋", color: "#44ddff",
+        items: [
+          { id: "hdr1", text: "Strict-Transport-Security (HSTS) header set with long max-age and includeSubDomains" },
+          { id: "hdr2", text: "Content-Security-Policy (CSP) header configured and tested" },
+          { id: "hdr3", text: "X-Frame-Options: DENY or SAMEORIGIN to prevent clickjacking" },
+          { id: "hdr4", text: "X-Content-Type-Options: nosniff — prevents MIME-type sniffing" },
+          { id: "hdr5", text: "Referrer-Policy set to strict-origin-when-cross-origin or stricter" },
+          { id: "hdr6", text: "Permissions-Policy restricts camera, microphone, geolocation if not needed" },
+          { id: "hdr7", text: "Server header removed or obscured — does not reveal web server software/version" },
+          { id: "hdr8", text: "X-Powered-By header removed — does not reveal framework (Express, PHP, etc.)" },
+        ],
+      },
+      {
+        id: "input", label: "Input Validation & File Uploads", icon: "📥", color: "#ff6699",
+        items: [
+          { id: "inp1", text: "All inputs validated server-side — client-side validation is UX only, never trusted" },
+          { id: "inp2", text: "Input length limits enforced to prevent buffer overflows and DoS" },
+          { id: "inp3", text: "File uploads: MIME type validated server-side (not just extension or Content-Type header)" },
+          { id: "inp4", text: "File uploads: file content inspected (magic bytes) not just the extension" },
+          { id: "inp5", text: "Uploaded files stored outside web root or in object storage — not directly accessible as code" },
+          { id: "inp6", text: "Uploaded filenames sanitized — path traversal characters stripped" },
+          { id: "inp7", text: "Image uploads processed/re-encoded to strip embedded malicious content (ExifTool strip)" },
+          { id: "inp8", text: "Upload size limits enforced to prevent DoS via large file upload" },
+          { id: "inp9", text: "Email, URL, phone fields validated with strict format checks, not just 'not empty'" },
+          { id: "inp10", text: "Numeric fields reject non-numeric and out-of-range values" },
+        ],
+      },
+      {
+        id: "disclosure", label: "Information Disclosure", icon: "🕵️", color: "#ffbb33",
+        items: [
+          { id: "disc1", text: "Stack traces are never shown to end users — generic error pages in production" },
+          { id: "disc2", text: "Debug mode / verbose logging is disabled in production" },
+          { id: "disc3", text: "API error responses do not reveal internal paths, database errors, or stack traces" },
+          { id: "disc4", text: ".env, .git, .DS_Store, config files are not publicly accessible via HTTP" },
+          { id: "disc5", text: "robots.txt does not list sensitive internal URLs" },
+          { id: "disc6", text: "Directory listing is disabled on the web server" },
+          { id: "disc7", text: "Source maps (.map files) are not deployed to production or are access-controlled" },
+          { id: "disc8", text: "Version numbers of libraries/frameworks not exposed in headers or HTML comments" },
+          { id: "disc9", text: "Internal IP addresses not returned in API responses or error messages" },
+          { id: "disc10", text: "GraphQL introspection disabled in production if not needed" },
+        ],
+      },
+      {
+        id: "hardcoded", label: "Hardcoded Secrets & Config", icon: "🔑", color: "#ff3366",
+        items: [
+          { id: "hc1", text: "No API keys, passwords, or secrets hardcoded in source code or config files" },
+          { id: "hc2", text: "All secrets loaded from environment variables or a secrets manager" },
+          { id: "hc3", text: ".env file is in .gitignore — never committed to the repository" },
+          { id: "hc4", text: "Git history scanned for accidentally committed secrets (use truffleHog or git-secrets)" },
+          { id: "hc5", text: "No credentials in Docker images, CI/CD logs, or build artifacts" },
+          { id: "hc6", text: "Database connection strings are environment variables — not hardcoded" },
+          { id: "hc7", text: "Third-party service keys (Stripe, SendGrid, AWS) are rotated and have minimum permissions" },
+          { id: "hc8", text: "JWT secret is long (>=256 bits), random, stored securely — not 'secret' or 'password'" },
+          { id: "hc9", text: "Frontend code scanned — no API keys accidentally bundled into JS (check bundle)" },
+        ],
+      },
+      {
+        id: "tls", label: "TLS / HTTPS", icon: "🔒", color: "#00cc66",
+        items: [
+          { id: "tls1", text: "All traffic served over HTTPS — HTTP redirects to HTTPS" },
+          { id: "tls2", text: "TLS 1.2 minimum — TLS 1.0 and 1.1 disabled" },
+          { id: "tls3", text: "Weak cipher suites disabled — only strong ciphers (AES-GCM, ChaCha20)" },
+          { id: "tls4", text: "SSL certificate is valid, not expired, and from a trusted CA" },
+          { id: "tls5", text: "Mixed content warnings — all subresources (images, scripts, CSS) loaded over HTTPS" },
+          { id: "tls6", text: "Certificate pinning considered for mobile apps if applicable" },
+        ],
+      },
+      {
+        id: "ratelimit", label: "Rate Limiting & DoS", icon: "⏱️", color: "#ff9900",
+        items: [
+          { id: "rl1", text: "Login endpoint rate-limited per IP and per account" },
+          { id: "rl2", text: "Password reset / OTP endpoint rate-limited" },
+          { id: "rl3", text: "Registration endpoint rate-limited to prevent mass account creation" },
+          { id: "rl4", text: "All public API endpoints have rate limits with clear 429 responses" },
+          { id: "rl5", text: "Search / filter endpoints have limits to prevent expensive query DoS" },
+          { id: "rl6", text: "File upload size and rate limited" },
+          { id: "rl7", text: "CAPTCHA or proof-of-work on high-risk actions (registration, forgot password)" },
+          { id: "rl8", text: "Regex patterns in search/validation reviewed for ReDoS vulnerability" },
+        ],
+      },
+      {
+        id: "thirdparty", label: "Third-Party & Dependencies", icon: "📦", color: "#aa88ff",
+        items: [
+          { id: "tp1", text: "npm/pip/composer audit run — no known critical vulnerabilities in dependencies" },
+          { id: "tp2", text: "Dependencies pinned to exact versions in lock files" },
+          { id: "tp3", text: "CDN scripts use Subresource Integrity (SRI) hashes" },
+          { id: "tp4", text: "Unused dependencies removed from package.json / requirements.txt" },
+          { id: "tp5", text: "Dependency update process defined — who monitors and applies security patches" },
+          { id: "tp6", text: "Third-party iframes / embeds are sandboxed with sandbox attribute" },
+        ],
+      },
+      {
+        id: "logging", label: "Logging & Monitoring", icon: "📊", color: "#33ccaa",
+        items: [
+          { id: "log1", text: "Authentication events logged: login success, login failure, logout, password change" },
+          { id: "log2", text: "Authorization failures (403s) logged with user ID and requested resource" },
+          { id: "log3", text: "Admin actions logged with timestamp, user, action, and affected resource" },
+          { id: "log4", text: "Logs do not contain passwords, session tokens, or payment card data" },
+          { id: "log5", text: "Logs are stored securely and tamper-evident — users cannot delete their own logs" },
+          { id: "log6", text: "Alerting configured for spike in 401/403/500 errors" },
+          { id: "log7", text: "Log retention policy defined — meets compliance requirements if applicable" },
+        ],
+      },
+      {
+        id: "cors", label: "CORS & API Security", icon: "🌐", color: "#00bbff",
+        items: [
+          { id: "cors1", text: "CORS Access-Control-Allow-Origin is not set to * for authenticated endpoints" },
+          { id: "cors2", text: "CORS allowlist is specific — only trusted origins listed" },
+          { id: "cors3", text: "Access-Control-Allow-Credentials: true only used with specific origin, never with *" },
+          { id: "cors4", text: "API versioning in place — old deprecated endpoints are removed or secured" },
+          { id: "cors5", text: "HTTP methods restricted — OPTIONS/TRACE/CONNECT disabled where not needed" },
+          { id: "cors6", text: "GraphQL: depth limiting, query cost analysis, and batching limits in place" },
+        ],
+      },
+      {
+        id: "ssrf", label: "SSRF & Redirects", icon: "↩️", color: "#ff5577",
+        items: [
+          { id: "ssrf1", text: "Any feature that fetches external URLs validates and allowlists the destination" },
+          { id: "ssrf2", text: "Webhook URLs validated — internal IPs (169.254.x.x, 10.x, 127.x) blocked" },
+          { id: "ssrf3", text: "Open redirects checked — redirect targets validated against an allowlist" },
+          { id: "ssrf4", text: "PDF/screenshot generation services (headless Chrome) isolated from internal network" },
+        ],
+      },
+      {
+        id: "pathtrav", label: "Path Traversal & File Access", icon: "📁", color: "#ffcc55",
+        items: [
+          { id: "pt1", text: "File read endpoints validate the path is within an allowed base directory" },
+          { id: "pt2", text: "User-supplied filenames have ../ and null bytes stripped" },
+          { id: "pt3", text: "realpath() or equivalent used to resolve and validate file paths server-side" },
+          { id: "pt4", text: "Backup files (.bak, .old, .zip of source) not present in the webroot" },
+          { id: "pt5", text: "Web server not running as root — uses a low-privilege service account" },
+        ],
+      },
+      {
+        id: "admin", label: "Admin Role Hardening", icon: "👑", color: "#ff4488",
+        items: [
+          { id: "adm1", text: "Admin panel is on a separate path and ideally IP-restricted or VPN-only" },
+          { id: "adm2", text: "Admin accounts require MFA" },
+          { id: "adm3", text: "Admin role cannot be set by the user themselves via API parameter" },
+          { id: "adm4", text: "Admin-only API endpoints return 403 (not 404 or 200) for regular users" },
+          { id: "adm5", text: "Admin session has a shorter absolute timeout than regular user sessions" },
+          { id: "adm6", text: "Destructive admin actions (delete all, purge, impersonate) require confirmation + re-auth" },
+          { id: "adm7", text: "Admin creation of new admins is logged and alerted" },
+        ],
+      },
+      {
+        id: "performance", label: "Performance & Availability", icon: "⚡", color: "#44ffaa",
+        items: [
+          { id: "perf1", text: "Database queries are indexed for common access patterns — no full table scans on large tables" },
+          { id: "perf2", text: "N+1 query problem resolved — batch queries or eager loading used" },
+          { id: "perf3", text: "Pagination enforced on all list endpoints — no unbounded result sets" },
+          { id: "perf4", text: "Slow query logging enabled — queries >100ms flagged for optimization" },
+          { id: "perf5", text: "Caching layer (Redis/Memcached) in place for expensive or repeated queries" },
+          { id: "perf6", text: "Static assets (JS, CSS, images) are compressed, minified, and CDN-served" },
+          { id: "perf7", text: "Images are compressed and served in modern formats (WebP/AVIF)" },
+          { id: "perf8", text: "HTTP/2 or HTTP/3 enabled on the web server" },
+          { id: "perf9", text: "Gzip/Brotli compression enabled for text responses" },
+          { id: "perf10", text: "Load tested — system handles expected peak traffic without degradation" },
+        ],
+      },
+      {
+        id: "env", label: "Environment & Deployment", icon: "🚀", color: "#55aaff",
+        items: [
+          { id: "env1", text: "Production environment variables differ from dev — no dev/test credentials in prod" },
+          { id: "env2", text: "Debug endpoints (/debug, /test, /phpinfo, /_profiler) are removed from production" },
+          { id: "env3", text: "Seed / test data and test user accounts removed from production database" },
+          { id: "env4", text: "Error handling returns HTTP 500 with generic message — no internals leaked" },
+          { id: "env5", text: "Database is not publicly accessible — only reachable from app server" },
+          { id: "env6", text: "Firewall rules reviewed — only ports 80/443 (and 22 for SSH from trusted IPs) open" },
+          { id: "env7", text: "SSH key-based authentication only — password auth disabled" },
+          { id: "env8", text: "Automatic security patch updates enabled on the OS level" },
+          { id: "env9", text: "Backups tested — restore process verified to work" },
+          { id: "env10", text: "Dependency versions locked and reproduced exactly in production build" },
+        ],
+      },
+      {
+        id: "privacy", label: "Privacy & Data Handling", icon: "🔏", color: "#bb55ff",
+        items: [
+          { id: "priv1", text: "PII (emails, names, phones) encrypted at rest in the database" },
+          { id: "priv2", text: "Passwords never stored or logged in any form — only hashed" },
+          { id: "priv3", text: "Payment card data not stored — delegated fully to PCI-compliant processor" },
+          { id: "priv4", text: "Data minimization — only data required for the feature is collected" },
+          { id: "priv5", text: "User data deletion request flow is implemented and tested" },
+          { id: "priv6", text: "Analytics and tracking scripts reviewed — no over-collection of user data" },
+        ],
+      },
+    ];
+
+    const AI_PROMPT = `You are a senior application security engineer performing a comprehensive pre-deployment security audit. Review the provided codebase, configuration, and infrastructure against every category below. For each item, state: PASS, FAIL, or N/A with a brief reason. Flag any FAIL as a blocker before deployment.
+
+${categories.map(c => `[${c.label.toUpperCase()}]\n${c.items.map((item, i) => `${i + 1}. ${item.text}`).join('\n')}`).join('\n\n')}
+
+INSTRUCTIONS:
+1. Check every single item above.
+2. For FAILs, provide: the vulnerable code snippet, the attack scenario, and the exact remediation.
+3. Prioritize Critical and High severity FAILs clearly.
+4. At the end, provide a deployment readiness verdict: READY / NOT READY with a summary of blockers.`;
+
+    function App() {
+      const [checked, setChecked] = useState({});
+      const [openCat, setOpenCat] = useState(null);
+      const [copied, setCopied] = useState(false);
+      const [filter, setFilter] = useState("all");
+
+      const toggle = (id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
+
+      const totalItems = categories.reduce((a, c) => a + c.items.length, 0);
+      const checkedCount = Object.values(checked).filter(Boolean).length;
+      const pct = Math.round((checkedCount / totalItems) * 100);
+
+      const copyPrompt = () => {
+        navigator.clipboard.writeText(AI_PROMPT).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+      };
+
+      const catProgress = (cat) => {
+        const done = cat.items.filter(i => checked[i.id]).length;
+        return { done, total: cat.items.length, pct: Math.round((done / cat.items.length) * 100) };
+      };
+
+      const visibleCats = filter === "incomplete"
+        ? categories.filter(c => catProgress(c).done < c.items.length)
+        : categories;
+
+      return (
+        <div style={{ minHeight: "100vh", background: "#0a0a0f", color: "#e0e0e0", fontFamily: "'JetBrains Mono', 'Courier New', monospace" }}>
+          {/* Header */}
+          <div style={{ background: "linear-gradient(135deg, #0f0f1a 0%, #12121f 100%)", borderBottom: "1px solid #1e1e2e", padding: "32px 24px 24px", position: "sticky", top: 0, zIndex: 50 }}>
+            <div style={{ maxWidth: 860, margin: "0 auto" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 11, letterSpacing: 4, color: "#ff4444", fontWeight: 600, marginBottom: 6 }}>PRE-DEPLOYMENT AUDIT</div>
+                  <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: "clamp(22px, 4vw, 32px)", fontWeight: 800, color: "#fff", lineHeight: 1.1 }}>Security Checklist</h1>
+                  <div style={{ marginTop: 4, fontSize: 12, color: "#666" }}>{totalItems} checks · {categories.length} categories · Roles: admin / user · Sessions & Cookies</div>
+                </div>
+                <button className="copy-btn" onClick={copyPrompt} style={{ background: copied ? "#00cc66" : "linear-gradient(135deg, #ff4444, #ff2020)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", cursor: "pointer", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, letterSpacing: 1, transition: "all 0.2s", whiteSpace: "nowrap" }}>
+                  {copied ? "✓ COPIED" : "⎘ COPY AI PROMPT"}
+                </button>
+              </div>
+
+              <div style={{ marginTop: 20 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#555", marginBottom: 6 }}>
+                  <span>{checkedCount} / {totalItems} checked</span>
+                  <span style={{ color: pct === 100 ? "#00cc66" : pct > 60 ? "#ffcc00" : "#ff4444", fontWeight: 700 }}>{pct}%</span>
+                </div>
+                <div style={{ height: 4, background: "#1a1a2e", borderRadius: 2, overflow: "hidden" }}>
+                  <div className="progress-bar-inner" style={{ height: "100%", borderRadius: 2, width: `${pct}%`, background: pct === 100 ? "#00cc66" : pct > 60 ? "#ffcc00" : "#ff4444" }} />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+                {["all", "incomplete"].map(f => (
+                  <button key={f} className="filter-btn" onClick={() => setFilter(f)} style={{ background: filter === f ? "#1e1e2e" : "transparent", color: filter === f ? "#fff" : "#555", border: `1px solid ${filter === f ? "#333" : "#222"}`, borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1, fontWeight: 600 }}>
+                    {f === "all" ? "ALL" : "INCOMPLETE"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Categories */}
+          <div style={{ maxWidth: 860, margin: "0 auto", padding: "20px 24px 60px" }}>
+            {visibleCats.map(cat => {
+              const { done, total, pct: cp } = catProgress(cat);
+              const isOpen = openCat === cat.id;
+              return (
+                <div key={cat.id} style={{ marginBottom: 10, background: "#0f0f1a", borderRadius: 10, border: `1px solid ${isOpen ? cat.color + "33" : "#1a1a2a"}`, overflow: "hidden", transition: "border-color 0.2s" }}>
+                  <div className="cat-header" onClick={() => setOpenCat(isOpen ? null : cat.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", cursor: "pointer", transition: "background 0.15s" }}>
+                    <span style={{ fontSize: 18 }}>{cat.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, color: "#fff", letterSpacing: 0.5 }}>{cat.label}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: done === total ? "#00cc66" : cat.color, background: (done === total ? "#00cc66" : cat.color) + "18", padding: "2px 7px", borderRadius: 4 }}>{done}/{total}</span>
+                      </div>
+                      <div style={{ height: 2, background: "#1a1a2a", borderRadius: 1, marginTop: 6, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${cp}%`, background: done === total ? "#00cc66" : cat.color, borderRadius: 1, transition: "width 0.3s" }} />
+                      </div>
+                    </div>
+                    <span style={{ color: "#444", fontSize: 12, display: "inline-block", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▼</span>
+                  </div>
+
+                  {isOpen && (
+                    <div className="items-list" style={{ borderTop: "1px solid #1a1a2a" }}>
+                      {cat.items.map((item, idx) => (
+                        <div key={item.id} className="item-row" onClick={() => toggle(item.id)} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "11px 16px", cursor: "pointer", borderBottom: idx < cat.items.length - 1 ? "1px solid #13131f" : "none", transition: "background 0.1s", background: checked[item.id] ? cat.color + "08" : "transparent" }}>
+                          <div style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, marginTop: 1, border: `1.5px solid ${checked[item.id] ? cat.color : "#333"}`, background: checked[item.id] ? cat.color + "22" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}>
+                            {checked[item.id] && <span style={{ color: cat.color, fontSize: 11, fontWeight: 700 }}>✓</span>}
+                          </div>
+                          <span style={{ fontSize: 12, lineHeight: 1.6, color: checked[item.id] ? "#555" : "#ccc", textDecoration: checked[item.id] ? "line-through" : "none", transition: "color 0.15s" }}>{item.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* AI Prompt box */}
+            <div style={{ marginTop: 30, padding: 20, background: "#0f0f1a", borderRadius: 10, border: "1px solid #1a1a2a" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div style={{ fontSize: 11, letterSpacing: 3, color: "#555", fontWeight: 600 }}>AI AUDIT PROMPT</div>
+                <button className="copy-btn" onClick={copyPrompt} style={{ background: copied ? "#00cc66" : "#1e1e2e", color: copied ? "#fff" : "#aaa", border: "1px solid #2a2a3a", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, letterSpacing: 1, transition: "all 0.2s" }}>
+                  {copied ? "✓ COPIED" : "⎘ COPY"}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: "#444", lineHeight: 1.7, maxHeight: 100, overflow: "hidden", position: "relative" }}>
+                <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 50, background: "linear-gradient(transparent, #0f0f1a)" }} />
+                You are a senior application security engineer performing a comprehensive pre-deployment security audit...
+              </div>
+              <div style={{ marginTop: 10, fontSize: 11, color: "#333" }}>Paste this prompt into any AI model (Claude, GPT-4, Gemini) to run a full audit of your codebase.</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+  </script>
+</body>
+</html>
